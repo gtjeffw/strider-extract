@@ -359,6 +359,41 @@ number cannot drift unnoticed.
 I am not a lawyer and none of this is legal advice. It is a description of what
 is in the repository so you can make your own call.
 
+## Author
+
+Jeff Wilson — [@gtjeffw](https://github.com/gtjeffw)
+
+### On LLM use
+
+This was built in an interactive session with Anthropic's Claude (Opus 5, via
+Claude Code). The reverse engineering, the tooling and these documents were
+produced by the model; the direction, decisions and review were mine.
+
+I am saying so plainly because it should affect how you read the findings. A
+model can produce confident, well-formatted, wrong analysis, and during this
+work it did — several times. The addresses were right but an FM voice's byte
+offsets were off by two; a table of sample rates was labelled "measured" when
+most of the values were actually a fallback estimate; a capture-length heuristic
+silently truncated every sample over 1.3 seconds; the content audit's own
+scanner had a false negative that let real ROM data through while reporting
+none. Each of those was caught by a check rather than by re-reading the prose,
+and each correction is recorded in the notes where the mistake was.
+
+That is why the repository leans on verification the way it does:
+
+* every claim in `docs/` is marked **[C] confirmed** or **[H] hypothesis**, and
+  the confirmed ones say what confirmed them;
+* the sound-test mapping is validated by making the game's own dispatch code
+  resolve all 66 entries and comparing chip-write sequences;
+* all 28 arcade samples have their duration derived twice, by independent
+  paths, and compared; each Mega Drive sample's length is confirmed against the
+  exact number of DAC writes its playback produced;
+* `make audit` enforces the repository's content policy instead of asserting it;
+* the whole pipeline is bit-reproducible from a fresh clone.
+
+Take the conclusions as well-evidenced rather than authoritative, and re-run the
+checks if something matters to you. Corrections welcome.
+
 ## Licence
 
 Code and documentation: MIT, see [LICENSE](LICENSE).
