@@ -276,12 +276,14 @@ channel 3; `$B3` has `$04` and keys on FM channel 4.
 
 ### 8.4 Worked example, SFX `$A0` **[C]**
 
-Header at `$0B644C` = `0017 0101 8005 000A 0006 …`
+Header at `$0B644C`, read field by field (`make analyse` prints this from your
+own ROM):
 
-* voice table at `$0B644C + $17` = `$0B6463`
-* `+$03` = `$01` → one track
-* track entry `80 05 000A 0006` → flags `$80`, channel byte `$05` (FM channel 5),
-  sequence data at `$0B644C + $0A` = `$0B6456`, extra word `$0006`
+* `+$00` = voice offset `$0017` → voice table at `$0B644C + $17` = `$0B6463`
+* `+$03` = track count `1`
+* one 6-byte track entry at `+$04`: flags `$80`, channel byte `$05`
+  (FM channel 5), data offset `$000A` → sequence at `$0B6456`, extra word
+  `$0006`
 * sequence data `$0B6456`–`$0B6462` (13 bytes)
 * voice table at `$0B6463`, exactly **25 bytes** — the standard SMPS FM voice size
 * the next SFX header is `$0B647C` = `$0B6463 + $19`, perfectly contiguous

@@ -90,7 +90,7 @@ roms/
 ```
 output/
   megadrive/
-    sounds.csv              87 rows, 27 columns
+    sounds.csv              87 rows, 28 columns
     sounds.json             same, plus the sound-test map and render method
     validation.json         patch audit + per-index validation results
     wav/                    48 kHz / 16-bit / stereo
@@ -316,10 +316,18 @@ make audit
 
 `scripts/audit_repo.py` lists every tracked file, asserts that nothing under
 `roms/`, `build/`, `output/`, `analysis/` or `tools/` is tracked, and scans
-every tracked text file for hex byte runs of 4 bytes or more, testing each one
-against your actual ROM images. Any hit is verbatim ROM content and fails the
-run. It currently reports **0 bytes**. It also counts the quoted disassembly
-lines, so that number cannot drift unnoticed.
+every tracked text file for hex byte runs — however they happen to be grouped
+(`00 17 01`, `0017 0101`, `$C6 $0F`, `c60f3a`) — testing each against your
+actual ROM images.
+
+It uses two thresholds, because a short hex run collides with a 1 MiB ROM by
+coincidence constantly: an immediate like `$80000000`, four ascending YM
+register numbers, a quoted serial number. So **8 bytes or more matching the ROM
+fails the run**, while 4–7 byte matches are listed as informational. It
+currently reports **no run of 8+ bytes**, and 18 short coincidental matches,
+each of which is visibly a register number, an immediate or an opcode encoding
+rather than copied data. It also counts the quoted disassembly lines, so that
+number cannot drift unnoticed.
 
 I am not a lawyer and none of this is legal advice. It is a description of what
 is in the repository so you can make your own call.

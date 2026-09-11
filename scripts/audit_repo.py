@@ -24,13 +24,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
-MIN_RUN = 4          # bytes; shorter runs are not meaningfully "ROM data"
+# Two thresholds, because a short hex run collides with a 1 MiB ROM by
+# coincidence all the time: immediates like $80000000, ascending YM register
+# numbers ($30 $34 $38 $3C), $FFFFFFFF, a quoted serial number. Those are not
+# copied ROM data in any meaningful sense.
+FAIL_RUN = 8         # >= this many bytes matching the ROM is a failure
+INFO_RUN = 4         # 4..7 bytes is reported but not failed
 TEXT_EXT = (".md", ".py", ".lua", ".txt", ".ini", ".cfg", ".yml", ".yaml", "")
 FORBIDDEN_PREFIXES = ("roms/", "build/", "output/", "analysis/", "tools/")
 ALLOWED_IN_ROMS = ("roms/README.md", "roms/.gitkeep")
 
-HEXRUN = re.compile(r'(?:\b[0-9A-Fa-f]{2}\b[ \t]+){%d,}\b[0-9A-Fa-f]{2}\b'
-                    % (MIN_RUN - 1))
+# Hex can be written many ways in prose: "00 17 01", "0017 0101", "$C6 $0F",
+# "c60f3a". Tokenise any run of whitespace-separated hex groups (each an even
+# number of digits, optionally $-prefixed) and concatenate it, so a byte
+# sequence is caught however it happens to be grouped. An earlier version only
+# matched 2-digit groups and therefore missed 4-digit ones.
+HEXTOKENS = re.compile(r'(?:(?:\$|0x)?[0-9A-Fa-f]{2}(?:[0-9A-Fa-f]{2})*)'
+                       r'(?:[ \t]+(?:\$|0x)?[0-9A-Fa-f]{2}(?:[0-9A-Fa-f]{2})*)*')
+# NOTE: deliberately no example byte strings in this file - they would trip the
+# scanner itself.
 M68K = (r'move|movea|movem|lea|jmp|jsr|bsr|bra|b(?:eq|ne|cc|cs|ge|lt|mi|pl)|'
         r'rts|rte|add|adda|addq|sub|suba|subq|cmp|cmpi|cmpa|tst|btst|bset|'
         r'bclr|and|andi|or|ori|eor|not|neg|clr|swap|ext|lsl|lsr|asl|asr|rol|'
@@ -93,7 +105,8 @@ def main():
               + ", ".join(p.rstrip('/') + '/' for p in FORBIDDEN_PREFIXES))
         print("    (allowed exceptions: " + ", ".join(ALLOWED_IN_ROMS) + ")")
 
-    print(f"\n[2] verbatim ROM byte runs (>= {MIN_RUN} bytes) in tracked text")
+    print(f"\n[2] verbatim ROM byte runs in tracked text "
+          f"(>= {FAIL_RUN} bytes fails, {INFO_RUN}-{FAIL_RUN-1} is informational)")
     if not roms:
         print("    SKIPPED - no ROMs present; put them in roms/ to run this check")
     else:
@@ -107,24 +120,33 @@ def main():
             if not os.path.isfile(path):
                 continue
             for i, ln in enumerate(open(path, errors="replace"), 1):
-                for m in HEXRUN.finditer(ln):
-                    try:
-                        b = bytes.fromhex(re.sub(r"[ \t]+", "", m.group(0)))
-                    except ValueError:
+                for m in HEXTOKENS.finditer(ln):
+                    raw = re.sub(r"[ \t]+|\$|0x", "", m.group(0))
+                    if len(raw) % 2 or len(raw) // 2 < INFO_RUN:
                         continue
-                    if len(b) < MIN_RUN:
+                    try:
+                        b = bytes.fromhex(raw)
+                    except ValueError:
                         continue
                     for name, rom in roms.items():
                         if b in rom:
-                            hits.append((f, i, name, len(b), m.group(0)))
+                            hits.append((f, i, name, len(b), m.group(0).strip()))
                             break
-        if hits:
+        hard = [h for h in hits if h[3] >= FAIL_RUN]
+        soft = [h for h in hits if h[3] < FAIL_RUN]
+        for f, i, name, n, txt in hard:
+            print(f"    FAIL {f}:{i}  {n} bytes from {name}: {txt[:56]}")
+        if hard:
             fail = 1
-            for f, i, name, n, txt in hits:
-                print(f"    FAIL {f}:{i}  {n} bytes from {name}: {txt[:56]}")
-            print(f"    total {sum(h[3] for h in hits)} verbatim ROM bytes")
+            print(f"    total {sum(h[3] for h in hard)} verbatim ROM bytes "
+                  f"in runs of {FAIL_RUN}+")
         else:
-            print("    ok - 0 verbatim ROM bytes found")
+            print(f"    ok - no run of {FAIL_RUN}+ bytes matches the ROMs")
+        if soft:
+            print(f"    {len(soft)} short coincidental matches "
+                  f"({INFO_RUN}-{FAIL_RUN-1} bytes), not failed:")
+            for f, i, name, n, txt in soft[:10]:
+                print(f"      {f}:{i}  {n}B  {txt[:40]}")
 
     print("\n[3] quoted disassembly (address + mnemonic lines)")
     tot, per = 0, {}
