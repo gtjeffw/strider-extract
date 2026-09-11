@@ -258,11 +258,12 @@ SFX track entry (6 bytes): `[flags] [channel byte] [signed word: data offset rel
 | `+$06` | 4 × n | track entries |
 
 Song track entry (4 bytes): `[signed word: data offset relative to the header] [word: copied to track +$08]`.
-Song tracks carry **no** channel byte; the driver accumulates the eight signed
-deltas at `$0B08BE` (`06 FA 01 01 02 01 01 00`) instead, one per track, so the
-channel bytes come out as `$06, $00, $01, $02, $04, $05, $06`. Every one of the
-31 songs has 7 tracks and this same channel assignment — the six FM channels
-plus one extra `$06` track.
+Song tracks carry **no** channel byte. The driver instead accumulates a table
+of eight signed deltas at `$0B08BE`, one per track, starting from the high word
+of `$80000000 | header[+4]`. Accumulated, those yield channel bytes
+`$06, $00, $01, $02, $04, $05, $06`. Every one of the 31 songs has 7 tracks and
+this same assignment — the six FM channels plus one extra `$06` track.
+(`make analyse` prints the delta table read from your own ROM.)
 
 ### 8.3 Channel byte **[C]**
 
@@ -282,15 +283,34 @@ Header at `$0B644C` = `0017 0101 8005 000A 0006 …`
 * track entry `80 05 000A 0006` → flags `$80`, channel byte `$05` (FM channel 5),
   sequence data at `$0B644C + $0A` = `$0B6456`, extra word `$0006`
 * sequence data `$0B6456`–`$0B6462` (13 bytes)
-* voice table `$0B6463`: `C6 0F 3A 01 03 04 03 D8 4E 0C 4E 00 00 00 00 12 C7 07 D2 0F 0F 0F 0F 00 00`
-  — exactly **25 bytes**, the standard SMPS FM voice size
+* voice table at `$0B6463`, exactly **25 bytes** — the standard SMPS FM voice size
 * the next SFX header is `$0B647C` = `$0B6463 + $19`, perfectly contiguous
 
-The capture of `$A0` writes port-1 registers `$B1`=`$3A`, `$31/$35/$39/$3D` =
-`01/03/04/03`, `$51/$55/$59/$5D` = `D8/4E/0C/4E`, `$61/$65/$69/$6D` = `00`,
-`$71/$75/$79/$7D` = `12/C7/07/D2`, `$81/$85/$89/$8D` = `0F`. Those are voice
-bytes `[2]`, `[3..6]`, `[7..10]`, `[11..14]`, `[15..18]`, `[19..22]` in order —
-an independent confirmation of both the header layout and the voice format.
+Capturing `$A0` and watching the YM2612 traffic confirms the voice layout
+independently: the driver writes the 25 voice bytes out in this order, which is
+the standard SMPS FM voice format.
+
+| Voice bytes | YM2612 registers (channel 5 → port 1, `+1`) | Meaning |
+|---|---|---|
+| `[0]` | `$B1` | algorithm / feedback |
+| `[1..4]` | `$31 $35 $39 $3D` | detune / multiple, 4 operators |
+| `[5..8]` | `$51 $55 $59 $5D` | rate scaling / attack rate |
+| `[9..12]` | `$61 $65 $69 $6D` | AM / first decay rate |
+| `[13..16]` | `$71 $75 $79 $7D` | second decay rate |
+| `[17..20]` | `$81 $85 $89 $8D` | sustain level / release rate |
+| `[21..24]` | `$41 $45 $49 $4D` | total level (combined with track volume) |
+
+Every one of the 25 ROM voice bytes appears among the values written to its
+register. Note the *first* write to a register is often not the voice byte: the
+driver pushes `$FF` into the `D1L/RR` registers (forced fast release) and `$7F`
+into the `TL` registers (silence) around key-off, then loads the voice. So both
+the header layout and the voice format above are confirmed rather than assumed.
+
+Correction worth recording: an earlier draft of these notes gave these indices
+as `[2]`, `[3..6]`, … — off by two, because the voice was mistaken for starting
+two bytes before `$0B6463`. The register mapping was right; the byte offsets
+were not. The layout above is the standard SMPS 25-byte voice starting at index
+0, verified byte-for-byte against the captured register writes.
 
 ### 8.5 Sequence byte semantics (partial) **[C]/[H]**
 
@@ -425,13 +445,10 @@ the extension word sits at `$003448`, so the base is `$003448 + 6 = $00344E`.
 
 ### 10.1 The table: `$00344E`, 66 bytes **[C]**
 
-```
-idx  0: 81 82 83 84 85 86 87 88 89 8A 8B 95 96 97 8C 8D
-idx 16: 8E 8F 90 91 9A 9C 98 9D 99 9E 93 9F 9B 92 94 A0
-idx 32: A2 A4 A8 A9 AA AB AC B0 B2 B3 B4 B5 B6 B9 BA BB
-idx 48: BD BE C0 C1 C3 C4 C6 C7 CA CD CE CF D1 D2 D3 D4
-idx 64: D5 D6
-```
+The table is a flat list of 66 sound ids, one per menu index. Rather than
+reproduce it here, `make analyse` writes it out from your own ROM to
+`analysis/megadrive/tables/soundtest.json` (and `report.txt` prints it). Its
+composition:
 
 * it ends exactly at `$00348F`; `$003490` is the next instruction
   (`bclr.b #$6,$fd1f.w`), so 66 entries is exact and matches the `moveq #$41`
@@ -484,9 +501,9 @@ outputs are named by id.
 368 bytes (`$170`) from **ROM `$0B6E86`** to Z80 RAM `$0000`. Code ends at Z80
 `$0142`; the rest is `$FF` padding. Called from `$00037C` during boot.
 
-Verified live in MAME: Z80 RAM `$0000` reads back
-`f3 f3 31 f4 1f af 21 f4 1f 06 0c 77 23 10 fc 3e`, byte-identical to ROM
-`$0B6E86`. Full disassembly: `analysis/megadrive/disassembly/z80_dac_driver.asm`.
+Verified live in MAME: after boot, Z80 RAM `$0000` onwards reads back
+byte-identical to ROM `$0B6E86`. `make analyse` writes the full disassembly to
+`analysis/megadrive/disassembly/z80_dac_driver.asm`.
 
 ### 11.2 Z80 RAM variables
 
@@ -539,15 +556,14 @@ acc = (acc + delta[n]) & 0xFF        ; acc starts at $80
 write acc to YM2612 register $2A     ; (register $2B = $80 enables the DAC)
 ```
 
-`delta[]` lives at Z80 `$0028`–`$0037`, i.e. inside the uploaded blob at ROM
-`$0B6EAE`–`$0B6EBD`:
+`delta[]` is a 16-entry table of signed bytes living at Z80 `$0028`–`$0037`,
+i.e. inside the uploaded blob at ROM `$0B6EAE`–`$0B6EBD`. Its entries are
+powers of two with matching negatives, so a nibble selects a step size and a
+sign.
 
-```
-00 01 02 04 08 10 20 40 80 FF FD FC F8 F0 E0 C0
-=  0  +1  +2  +4  +8 +16 +32 +64 -128  -1  -3  -4  -8 -16 -32 -64
-```
-
-Verified live: Z80 RAM `$0028` reads back exactly those 16 bytes.
+`scripts/rominfo.py:dpcm_deltas()` reads the table out of your ROM, and
+`scripts/extract_pcm.py` prints it; the decoder never hardcodes it. Verified
+live: Z80 RAM `$0028` reads back exactly the 16 ROM bytes.
 
 The two nibble paths are separate unrolled code (`$00B5` and `$00DE`); each
 waits on the YM2612 busy flag (`BIT 7,(HL)` with `HL' = $4000`) before writing.

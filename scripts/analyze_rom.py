@@ -14,6 +14,10 @@ import rominfo as R
 
 OUT = "analysis/megadrive/tables"
 
+# Eight signed bytes the song start routine accumulates to derive each track's
+# channel byte (see docs/megadrive.md section 8.2).
+SONG_CHANNEL_DELTAS = 0x0B08BE
+
 
 # Song and SFX headers differ; both are confirmed from the driver's own start
 # routines ($0B07A0 for songs, $0B061E for SFX). See NOTES.md section 8.
@@ -128,6 +132,44 @@ def main():
               + ",".join(f"${t['channel_byte']:02X}" for t in h["tracks"]))
     rep["sfx"] = frows
     w("sfx.json", frows)
+
+    print("\n=== song track channel-delta table @ $%06X ===" % SONG_CHANNEL_DELTAS)
+    deltas = d[SONG_CHANNEL_DELTAS:SONG_CHANNEL_DELTAS + 8]
+    sig = [v - 256 if v > 127 else v for v in deltas]
+    print("  signed deltas : " + " ".join(f"{v:+d}" for v in sig))
+    acc, chans = 0, []
+    for v in sig:
+        acc = (acc + v) & 0xFF
+        chans.append(acc)
+    print("  accumulated   : " + " ".join(f"${c:02X}" for c in chans))
+    print("  -> FM channels: " + " ".join(
+        str(c + 1) if c < 3 else (str(c) if c in (4, 5, 6) else f"?{c}")
+        for c in chans))
+    rep["song_channel_deltas"] = dict(
+        at=f"${SONG_CHANNEL_DELTAS:06X}", signed=sig,
+        accumulated=[f"${c:02X}" for c in chans])
+
+    print("\n=== DPCM delta table @ $%06X (inside the Z80 blob) ===" % R.DPCM_DELTA_ROM)
+    dd = R.dpcm_deltas(d)
+    sd = [v - 256 if v > 127 else v for v in dd]
+    print("  nibble : " + " ".join(f"{i:5X}" for i in range(16)))
+    print("  delta  : " + " ".join(f"{v:+5d}" for v in sd))
+    rep["dpcm_deltas"] = sd
+
+    print("\n=== worked example: SFX $A0 FM voice (standard SMPS 25-byte layout) ===")
+    a0 = R.sfx_table(d)[0]
+    v0 = a0 + R.be16(d, a0)
+    print(f"  header ${a0:06X}, voice table ${v0:06X}, 25 bytes")
+    for lbl, regs, lo, hi in (
+            ("algorithm/feedback", "$B0+ch", 0, 0),
+            ("DT/MUL            ", "$30 $34 $38 $3C +ch", 1, 4),
+            ("RS/AR             ", "$50 $54 $58 $5C +ch", 5, 8),
+            ("AM/D1R            ", "$60 $64 $68 $6C +ch", 9, 12),
+            ("D2R               ", "$70 $74 $78 $7C +ch", 13, 16),
+            ("D1L/RR            ", "$80 $84 $88 $8C +ch", 17, 20),
+            ("TL                ", "$40 $44 $48 $4C +ch", 21, 24)):
+        vals = " ".join(f"${d[v0+i]:02X}" for i in range(lo, hi + 1))
+        print(f"  [{lo:2d}..{hi:2d}] {lbl} -> {regs:22s} {vals}")
 
     print("\n=== DAC / DPCM samples ===")
     drows = R.dac_entries(d)

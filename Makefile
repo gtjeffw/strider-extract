@@ -10,7 +10,7 @@ MD_ROM  := roms/Strider (USA, Europe).md
 ARC_ROM := roms/strider/09.12b
 
 .DEFAULT_GOAL := help
-.PHONY: help all megadrive arcade analyse validate clean distclean check-roms check-tools
+.PHONY: help all megadrive arcade analyse validate audit clean distclean check-roms check-tools
 
 help:
 	@echo "strider-extract"
@@ -20,6 +20,7 @@ help:
 	@echo "  make arcade      CPS-1 arcade rip"
 	@echo "  make analyse     static analysis reports only (no emulation)"
 	@echo "  make validate    Mega Drive validation passes"
+	@echo "  make audit       check no ROM-derived content is tracked by git"
 	@echo "  make clean       remove build/ and output/"
 	@echo "  make distclean   also remove analysis/ and tools/"
 	@echo
@@ -63,6 +64,9 @@ analyse: check-roms
 	$(PY) scripts/disz80.py --target genesis > analysis/megadrive/disassembly/z80_dac_driver.asm
 	$(PY) scripts/disz80.py --target arcade  > analysis/arcade/disassembly/cps1_sound_09.12b.asm
 	@echo "reports in analysis/*/tables/, listings in analysis/*/disassembly/"
+
+audit:
+	$(PY) scripts/audit_repo.py
 
 validate: check-roms
 	$(PY) scripts/validate.py --jobs $(JOBS)

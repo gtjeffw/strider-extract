@@ -19,6 +19,17 @@ That is 87 + 122 = **209 WAVs**. The arcade side has 123 sound codes but one
 (`$80`) selects a null sample-table entry and is silent by design, so it gets a
 metadata row and no file.
 
+Versions targeted, exactly:
+
+* **Mega Drive** — `Strider (USA, Europe)`, SHA-1
+  `26fe42d13a01c8789bbad722ebac05b8a829eb37`
+* **CPS-1 arcade** — MAME set **`strider`**, listed in MAME's game list as
+  *MAME Games > Strider (USA, B-Board 89624B-2)*
+
+Other revisions and other MAME Strider sets (`striderua`, `striderj`,
+`striderjr`, `strideruc`) have different sound-ROM contents, so the addresses in
+the docs will not carry over to them.
+
 **You must supply your own ROMs.** None are included — see
 [Adding ROMs](#adding-roms).
 
@@ -62,6 +73,11 @@ roms/
 
 * The Mega Drive file must be SHA-1 `26fe42d13a01c8789bbad722ebac05b8a829eb37`.
   The scripts warn on a mismatch but will still run.
+* The arcade set is MAME's **`strider`** — in MAME's game list,
+  *Strider (USA, B-Board 89624B-2)*. Other Strider sets exist (`striderua`,
+  `striderj`, `striderjr`, `strideruc`) and have **different** sound-ROM
+  contents, so the addresses in [docs/arcade.md](docs/arcade.md) will not
+  match them.
 * The arcade directory **must be named `strider`** — that is the MAME set name
   and how MAME finds it. `roms/strider.zip` works too. `mame.ini` sets
   `rompath roms`, so `mame strider -verifyroms` should print *"romset strider is
@@ -188,6 +204,7 @@ Everything except `README.md`, `Makefile`, `mame.ini`, `requirements.txt`,
 | `validate.py` | Mega Drive validation passes |
 | `vgm.py` / `arcade_vgm.py` | Chip-write log → VGM, chip-usage analysis |
 | `wavutil.py` | DC removal and conservative trimming |
+| `audit_repo.py` | Check no ROM-derived content is tracked by git |
 | `*.lua` | MAME automation: save states, captures, sound-test driving |
 
 ## Known limitations
@@ -205,13 +222,58 @@ Everything except `README.md`, `Makefile`, `mame.ini`, `requirements.txt`,
   The separation is perfect, but it is an inference from behaviour rather than a
   label in the ROM.
 
-## Licence and legality
+## What this repository does and does not contain
 
-The code and documentation here are MIT licensed (see [LICENSE](LICENSE)).
+`roms/`, `build/`, `output/` and `analysis/` are all untracked. Concretely, the
+32 tracked files are: `README.md`, `LICENSE`, `Makefile`, `mame.ini`,
+`requirements.txt`, `.gitignore`, three files in `docs/`, `roms/README.md` and
+21 scripts. Nothing else.
 
-**No ROMs, and no audio extracted from them, are distributed.** Strider is
-copyright Capcom. This repository contains only tooling and analysis; you need
-your own legally obtained dumps, and anything it generates is a derived work of
-Capcom's copyrighted material. `roms/`, `build/`, `output/` and `analysis/` are
-all untracked for that reason — regenerate them locally rather than committing
-them.
+That means **none** of the following is distributed here:
+
+| Not distributed | Where it lives when you build |
+|---|---|
+| ROM images | `roms/` — you supply them |
+| Patched ROM copies | `build/` |
+| Full disassembly listings | `analysis/*/disassembly/` |
+| Extracted audio (WAV, VGM, raw samples) | `output/` |
+| Chip-write logs | `analysis/*/logs/` |
+| Extracted data tables (JSON) | `analysis/*/tables/` |
+
+The generated listings are the *result* of running the tooling on your own dump,
+not something shipped with it — you get the recipe, and you run it.
+
+The `docs/` write-ups do contain **short disassembly excerpts** — 103 lines
+across the two platform documents, roughly 0.3 KiB of the original programs,
+each quoted alongside the analysis of what it does. That is the normal form for
+reverse-engineering documentation; without it the write-ups would be assertions
+with nothing backing them.
+
+They contain **no verbatim ROM data tables**. Every table the documents refer to
+— the sound-test index map, the DPCM delta table, the FM voice bytes, the song
+channel deltas, the OKIM6295 phrase table — is described structurally and then
+printed from *your* ROM by `make analyse`. This is enforced by an audit, not by
+good intentions:
+
+```bash
+make audit
+```
+
+`scripts/audit_repo.py` lists every tracked file, asserts that nothing under
+`roms/`, `build/`, `output/`, `analysis/` or `tools/` is tracked, and scans
+every tracked text file for hex byte runs of 4 bytes or more, testing each one
+against your actual ROM images. Any hit is verbatim ROM content and fails the
+run. It currently reports **0 bytes**. It also counts the quoted disassembly
+lines, so that number cannot drift unnoticed.
+
+I am not a lawyer and none of this is legal advice. It is a description of what
+is in the repository so you can make your own call.
+
+## Licence
+
+Code and documentation: MIT, see [LICENSE](LICENSE).
+
+Strider is copyright Capcom. The licence covers this tooling only — not the
+game, not any ROM image, and not anything the scripts generate from one.
+Whatever you extract is a derived work of Capcom's copyrighted material; keep it
+local rather than redistributing it.
