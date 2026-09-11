@@ -203,6 +203,37 @@ SOUNDTEST_PLAY   = 0x003442
 SOUNDTEST_GO     = 0xFFFDE8
 
 
+def identity_problems(d):
+    """SHA-1 mismatch against the documented revision. Advisory, not fatal."""
+    import hashlib
+    got = hashlib.sha1(d).hexdigest()
+    return [] if got == ROM_SHA1 else [(ROM_NAME, ROM_SHA1, got)]
+
+
+def verify(d, warn=None):
+    """Identity is advisory, structure is decisive.
+
+    Mirrors arcade_info.verify(): a hash mismatch only warns, because if the
+    layout still checks out the pipeline can proceed and say what it is working
+    on. A structural failure raises, because then the addresses are wrong.
+    """
+    import sys
+    if warn is None:
+        def warn(msg):
+            print(msg, file=sys.stderr)
+
+    ident = identity_problems(d)
+    if ident:
+        warn("WARNING: Mega Drive ROM is not the documented revision:\n"
+             + "\n".join(f"  {n}: expected SHA-1 {w}\n  {'':>{len(n)}}  got      {g}"
+                          for n, w, g in ident)
+             + "\n  Proceeding because the structural checks pass, but the"
+               " addresses in\n  docs/megadrive.md may not describe this"
+               " revision. See roms/README.md.")
+    struct = verify_tables(d, strict=True)
+    return ident, struct
+
+
 def verify_tables(d, strict=True):
     """Structural sanity checks on the pointer tables.
 

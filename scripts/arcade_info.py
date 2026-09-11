@@ -190,23 +190,117 @@ def decode_oki_adpcm(data):
     return out
 
 
-def verify_roms(strict=True):
-    """Check the sound ROMs against MAME's `strider` CRC32s.
-
-    Returns a list of (filename, expected, got) for mismatches. With strict=True
-    a mismatch raises, because every address in docs/arcade.md is specific to
-    this set.
-    """
+def identity_problems():
+    """CRC32 mismatches against MAME's `strider` set. Advisory, not fatal."""
     import zlib
     bad = []
     for name, want in ROM_CRC32.items():
         got = zlib.crc32(load(name)) & 0xFFFFFFFF
         if got != want:
             bad.append((name, want, got))
-    if bad and strict:
-        msg = "\n".join(f"  {n}: expected CRC32 {w:08x}, got {g:08x}"
-                         for n, w, g in bad)
-        raise SystemExit(
-            "arcade ROM mismatch - this is not MAME's `strider` set:\n" + msg +
-            "\nOther Strider sets have different sound ROMs; see roms/README.md.")
     return bad
+
+
+def structure_problems():
+    """Do the baked-in addresses still land on structures of the right shape?
+
+    Deliberately shape-based rather than content-based, so a revision that
+    happens to lay its sound data out the same way still works.
+    """
+    d = z80_rom()
+    rom = oki_rom()
+    bad = []
+
+    # Z80 reset: DI then IM 1, and a stack pointer into the RAM window.
+    if d[0] != 0xF3 or d[1:3] != b"\xed\x56":
+        bad.append("Z80 $0000 is not `DI / IM 1` - not a CPS-1 sound program?")
+    if d[3] != 0x31 or not (0xD000 <= struct.unpack_from("<H", d, 4)[0] <= 0xD800):
+        bad.append("Z80 $0003 does not load a stack pointer into $D000-$D800")
+
+    # Sound command handler must begin by reading the last-command byte.
+    if d[0x0137] != 0x3A:
+        bad.append(f"$0137 is ${d[0x0137]:02X}, not `LD A,(nn)` - the sound "
+                   f"command handler is not where expected")
+
+    # The two FM sequence pointer tables: sane counts, and every pointer inside
+    # the region that table is read from.
+    try:
+        fm, n1, n2 = fm_sequence_table(d)
+    except Exception as e:
+        return bad + [f"cannot parse the FM sequence tables: {e}"]
+    if not 1 <= n1 <= 128:
+        bad.append(f"fixed FM table count is {n1}, expected 1..128")
+    if not 1 <= n2 <= 128:
+        bad.append(f"bank-1 FM table count is {n2}, expected 1..128")
+    for code, addr, bank in fm:
+        lo, hi = (0x8000, 0xC000) if bank == 1 else (0x1000, 0x8000)
+        if not lo <= addr < hi:
+            bad.append(f"FM sequence for code ${code:02X} points to ${addr:04X}, "
+                       f"outside ${lo:04X}-${hi:04X}")
+            break
+
+    # OKI code table: each play byte must select exactly one of the 4 voices.
+    ok, n = oki_code_table(d)
+    if not 1 <= n <= 128:
+        bad.append(f"OKI code table count is {n}, expected 1..128")
+    for code, b, _stop in ok:
+        mask = b & 0xF0
+        if mask == 0 or mask & (mask - 1):
+            bad.append(f"OKI code ${code:02X} play byte ${b:02X} does not select "
+                       f"exactly one voice")
+            break
+
+    # OKI phrase table: populated entries must be monotonic and contiguous,
+    # start past the table area, and end inside the ROM.
+    ph = [p for p in oki_phrases(rom)
+          if not p["empty"] and p["start"] != 0xFFFFFF and p["end"] >= p["start"]]
+    if not ph:
+        bad.append("OKI phrase table has no populated entries")
+    else:
+        tbl_bytes = OKI_PHRASE_ENTRIES * OKI_PHRASE_SIZE
+        if ph[0]["start"] < tbl_bytes:
+            bad.append(f"first OKI sample starts ${ph[0]['start']:06X}, inside the "
+                       f"${tbl_bytes:04X}-byte phrase table")
+        if ph[-1]["end"] >= len(rom):
+            bad.append(f"last OKI sample ends ${ph[-1]['end']:06X}, past the "
+                       f"{len(rom)}-byte sample ROM")
+        for a, b in zip(ph, ph[1:]):
+            if b["start"] != a["end"] + 1:
+                bad.append(f"OKI phrases not contiguous: {a['index']} ends "
+                           f"${a['end']:06X}, {b['index']} starts ${b['start']:06X}")
+                break
+    return bad
+
+
+def verify(warn=None):
+    """Identity is advisory, structure is decisive.
+
+    A CRC32 mismatch only warns: if the layout still checks out, the pipeline can
+    proceed and tell you it is working on something other than the documented
+    set. A structural failure raises, because then the addresses really are wrong.
+    """
+    import sys
+    if warn is None:
+        def warn(msg):
+            print(msg, file=sys.stderr)
+
+    ident = identity_problems()
+    if ident:
+        warn("WARNING: arcade sound ROMs are not MAME's `strider` set:\n"
+             + "\n".join(f"  {n}: expected CRC32 {w:08x}, got {g:08x}"
+                          for n, w, g in ident)
+             + "\n  Proceeding because the structural checks pass, but the"
+               " addresses in\n  docs/arcade.md may not describe this revision."
+               " See roms/README.md.")
+    struct = structure_problems()
+    if struct:
+        raise SystemExit(
+            "arcade ROM structure does not match the documented layout:\n"
+            + "\n".join("  " + p for p in struct)
+            + "\nThe baked-in addresses do not fit this ROM. See roms/README.md.")
+    return ident, struct
+
+
+# Kept for callers that want the old name.
+def verify_roms(strict=True):
+    return verify()[0]

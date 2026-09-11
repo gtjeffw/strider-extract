@@ -67,7 +67,7 @@ def main():
     ap.add_argument("--rom", default=os.path.join(ROOT, R.ROM_NAME))
     a = ap.parse_args()
     d = R.load(a.rom)
-    R.verify_tables(d)
+    R.verify(d)
     os.makedirs(os.path.join(ROOT, OUT), exist_ok=True)
     rep = {}
 

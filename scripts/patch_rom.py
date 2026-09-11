@@ -17,7 +17,7 @@ Patches:
   4. Header checksum at $18E recomputed, otherwise the boot check at $000336
      drops the game into the hang loop at $0003E4.
 """
-import argparse, hashlib, os, struct, sys
+import argparse, hashlib, os, struct, sys  # hashlib: output digests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rominfo as R
 
@@ -213,9 +213,7 @@ def main():
     a = ap.parse_args()
 
     data = R.load(a.rom)
-    got = hashlib.sha1(data).hexdigest()
-    if got != R.ROM_SHA1:
-        print(f"WARNING: ROM sha1 {got} != expected {R.ROM_SHA1}", file=sys.stderr)
+    R.verify(data)
 
     print("exhaustive scan of the ORIGINAL rom for queue writers:")
     for addr, size, dst in scan_queue_writers(data):

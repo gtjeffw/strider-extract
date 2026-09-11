@@ -188,23 +188,37 @@ rediscovered from it. The tooling is not a general-purpose sound-driver
 detector; it is this analysis, made runnable.
 
 What stops that being fragile is that the addresses are checked rather than
-trusted:
+trusted, on both platforms, with a deliberate split:
 
-* the Mega Drive ROM's SHA-1 is compared and warned about;
-* the arcade sound ROMs are checked against MAME's CRC32s, and a mismatch is a
-  hard error, because the other Strider sets have different sound ROMs;
+**Identity is advisory.** The Mega Drive ROM's SHA-1 and the arcade sound ROMs'
+CRC32s are compared against the documented revisions, and a mismatch prints a
+prominent warning naming what it got — then carries on. Knowing you are working
+on something other than the documented set is useful; refusing outright is not,
+if the layout still checks out.
+
+**Structure is decisive.** A structural failure stops the run, because that is
+what actually means the baked-in addresses do not fit:
+
 * `rominfo.verify_tables()` asserts the invariants that established the counts
   in the first place — both pointer tables strictly increasing, each abutting
   the data it points into, the DAC sample tables chaining exactly with the first
   sample immediately after the table;
+* `arcade_info.structure_problems()` checks the Z80 reset is `DI / IM 1` with a
+  stack pointer into the RAM window, that the sound command handler begins by
+  reading its last-command byte, that both FM pointer tables have sane counts
+  and point inside the region they are read from, that every OKI play byte
+  selects exactly one voice, and that the OKI phrase table is monotonic,
+  contiguous, starts past the table area and ends inside the ROM;
 * `patch_rom.py` asserts the injected code fits in genuinely free `$FF` padding,
   and that no sound-queue writer is still live after patching;
 * the save-state builders refuse to save until they have *observed* silence, and
   the Mega Drive one until it has observed its relocated main loop actually
   spinning.
 
-So a ROM the addresses do not fit fails with a specific message rather than
-quietly producing plausible nonsense.
+So a *different but structurally identical* ROM proceeds with a warning, and a
+ROM the addresses genuinely do not fit fails naming the invariant that broke —
+rather than either being refused outright or quietly producing plausible
+nonsense.
 
 ## Validation
 
