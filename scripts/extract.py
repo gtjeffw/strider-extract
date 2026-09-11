@@ -117,10 +117,16 @@ def process_one(sid, kind, idx, soundtest_index, label, rom, workdir):
     writes = V.to_chip_writes(events)
     an = V.analyse(writes)
 
-    # The game's own on-screen label, when the sound test exposes this id:
-    # real titles for the music, S.E.NN for the effects. Ids the menu cannot
-    # reach have no label and keep the bare name.
-    suffix = ("_" + R.label_slug(label)) if label else ""
+    # Filenames carry BOTH numbers plus the game's own label:
+    #   MUS_17_91_ST19_HIRYU      rom order 17, id $91, sound-test index 19
+    #   SFX_001_A0_ST31_SE00      rom order 1,  id $A0, sound-test index 31
+    #   SFX_002_A1                the menu cannot reach $A1, so no ST or label
+    # Sequence numbers follow ROM order because the 21 menu-unreachable ids
+    # have no menu position at all; the ST field is what ties a file to the
+    # sound test. output/megadrive/MANIFEST.md lays the whole mapping out.
+    suffix = ""
+    if soundtest_index is not None:
+        suffix = f"_ST{soundtest_index:02d}_{R.label_slug(label)}"
     if kind == "music":
         fname = f"MUS_{idx:02d}_{sid:02X}{suffix}"
     else:

@@ -524,6 +524,16 @@ of the longer strings fixes `$0C` = `A`; everything else follows:
 That charset decodes all 75 strings across the four menu descriptor tables with
 **no unresolved codes**, which is itself the evidence that it is right.
 
+The label-to-id mapping is cross-checked three ways: the music/effect boundary
+in the labels falls at index 31, exactly where the id table's first `$A0`+ entry
+falls, with no class disagreement on any of the 66 entries; the 35 `S.E.` labels
+run sequentially from `S.E.00`; and the behaviour matches the names — `STAGE
+CLEAR` (5.2 s), `GAME OVER` (6.4 s), `CONTINUE` (10.4 s) and `STAGE FINISH`
+(13.0 s) are all non-looping cues, while every named stage BGM runs to the 60 s
+cap. An off-by-one anywhere in the chain would break all three. (The four
+`INTRODUCTION` tracks do loop — they are attract-mode BGM, not short cues, which
+was an incorrect expectation on my part rather than a mapping problem.)
+
 Descriptor tables:
 
 | Table | Drives | Entries | Decoded |
@@ -562,9 +572,11 @@ no descriptive names — 35 labels, matching exactly the 29 sequence SFX plus 6
 DAC samples the menu reaches (§10.1). The numbering is canonical, so an effect
 can be referred to the way the game refers to it.
 
-Both are used for the output filenames: `MUS_01_81_DEFENSE_LINE.wav`,
-`SFX_001_A0_SE00.wav`. The 19 SFX and 2 DAC samples the menu cannot reach have
-no label and keep the bare form, `SFX_002_A1.wav`.
+Both are used for the output filenames, alongside both index numbers:
+`MUS_01_81_ST00_DEFENSE_LINE.wav`, `SFX_001_A0_ST31_SE00.wav`. The 19 SFX and 2
+DAC samples the menu cannot reach have neither an `ST` index nor a label, so they
+keep the bare form `SFX_002_A1.wav` — the absence of the field is itself the
+signal that the sound test cannot reach that id.
 
 Correction worth recording: an earlier version of these notes stated the labels
 were *not* recoverable, claiming the descriptors held two 16-bit fields whose

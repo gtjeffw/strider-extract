@@ -90,19 +90,22 @@ roms/
 ```
 output/
   megadrive/
+    MANIFEST.md             the whole mapping, as a browsable table
     sounds.csv              87 rows, 29 columns (incl. the sound-test label)
     sounds.json             same, plus the sound-test map and render method
     validation.json         patch audit + per-index validation results
     wav/                    48 kHz / 16-bit / stereo
-      MUS_01_81_DEFENSE_LINE.wav …       31 music tracks, titled from the
-      MUS_31_9F_STAGE_FINISH.wav          game's own sound-test labels
-      SFX_001_A0_SE00.wav …              48 FM sound effects, numbered as the
-      SFX_048_CF.wav                      game numbers them (S.E.00-S.E.34);
-      SFX_049_D0.wav …                     8 DPCM samples; the 21 ids the menu
-      SFX_056_D7.wav                       cannot reach have no label
+      MUS_01_81_ST00_DEFENSE_LINE.wav    31 music tracks, titled from the
+      …                                   game's own sound-test labels
+      SFX_001_A0_ST31_SE00.wav           48 FM sound effects + 8 DPCM samples,
+      SFX_002_A1.wav                      numbered as the game numbers them
+      …                                   (S.E.00-S.E.34); the 21 ids the
+                                          sound test cannot reach have neither
+                                          an ST index nor a label
     vgm/                    87 VGM 1.50 logs (YM2612 + SN76489)
     raw-pcm/                the 8 DPCM samples: .dpcm, _u8.raw, .wav
   arcade/
+    MANIFEST.md             the whole mapping, as a browsable table
     sounds.csv              123 rows, 30 columns (one row has no WAV: $80)
     sounds.json
     wav/                    48 kHz / 16-bit / mono
@@ -112,6 +115,19 @@ output/
     vgm/                    123 VGM 1.61 logs (YM2151 + OKIM6295)
     raw-adpcm/              the 28 OKI samples: .adpcm, .wav
 ```
+
+Filenames carry **both** numbers plus the game's own label, so a file can be
+tied to ROM order and to the sound test at once:
+
+| Filename | Means |
+|---|---|
+| `MUS_17_91_ST19_HIRYU.wav` | 17th music id, id `$91`, sound-test index 19, *HIRYU* |
+| `SFX_001_A0_ST31_SE00.wav` | 1st effect id, id `$A0`, sound-test index 31, the game's *S.E.00* |
+| `SFX_002_A1.wav` | the sound test cannot reach `$A1` — no index, no label |
+
+Sequence numbers follow ROM order, because the 21 unreachable ids have no menu
+position; the `ST` field is what ties a file to the sound test.
+`MANIFEST.md` in each output directory lays the full mapping out as a table.
 
 Audio policy: no gain, no normalisation, no dither. The emulator's constant DC
 offset is removed (real hardware AC-couples its output) and silence is trimmed
@@ -289,6 +305,7 @@ Everything except `README.md`, `Makefile`, `mame.ini`, `requirements.txt`,
 | `validate.py` | Mega Drive validation passes |
 | `vgm.py` / `arcade_vgm.py` | Chip-write log → VGM, chip-usage analysis |
 | `wavutil.py` | DC removal and conservative trimming |
+| `make_manifest.py` | `sounds.csv` → browsable `MANIFEST.md` (no emulation) |
 | `audit_repo.py` | Check no ROM-derived content is tracked by git |
 | `*.lua` | MAME automation: save states, captures, sound-test driving |
 

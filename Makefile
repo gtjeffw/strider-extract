@@ -10,7 +10,7 @@ MD_ROM  := roms/Strider (USA, Europe).md
 ARC_ROM := roms/strider/09.12b
 
 .DEFAULT_GOAL := help
-.PHONY: help all megadrive arcade analyse validate audit clean distclean check-roms check-tools
+.PHONY: help all megadrive arcade analyse validate audit manifest clean distclean check-roms check-tools
 
 help:
 	@echo "strider-extract"
@@ -21,6 +21,7 @@ help:
 	@echo "  make analyse     static analysis reports only (no emulation)"
 	@echo "  make validate    Mega Drive validation passes"
 	@echo "  make audit       check no ROM-derived content is tracked by git"
+	@echo "  make manifest    regenerate output/*/MANIFEST.md from sounds.csv"
 	@echo "  make clean       remove build/ and output/"
 	@echo "  make distclean   also remove analysis/ and tools/"
 	@echo
@@ -45,6 +46,7 @@ megadrive: check-roms
 	$(PY) scripts/extract.py --jobs $(JOBS)
 	$(PY) scripts/extract_pcm.py
 	$(PY) scripts/validate.py --jobs $(JOBS)
+	$(PY) scripts/make_manifest.py --platform megadrive
 
 arcade: check-roms
 	@mkdir -p analysis/arcade/tables analysis/arcade/disassembly
@@ -52,6 +54,7 @@ arcade: check-roms
 	$(PY) scripts/disz80.py --target arcade > analysis/arcade/disassembly/cps1_sound_09.12b.asm
 	$(PY) scripts/extract_oki.py
 	$(PY) scripts/arcade_extract.py --jobs $(JOBS)
+	$(PY) scripts/make_manifest.py --platform arcade
 
 analyse: check-roms
 	@mkdir -p analysis/megadrive/tables analysis/megadrive/disassembly
@@ -64,6 +67,9 @@ analyse: check-roms
 	$(PY) scripts/disz80.py --target genesis > analysis/megadrive/disassembly/z80_dac_driver.asm
 	$(PY) scripts/disz80.py --target arcade  > analysis/arcade/disassembly/cps1_sound_09.12b.asm
 	@echo "reports in analysis/*/tables/, listings in analysis/*/disassembly/"
+
+manifest:
+	$(PY) scripts/make_manifest.py
 
 audit:
 	$(PY) scripts/audit_repo.py
