@@ -228,6 +228,19 @@ MAME's rendered audio — **28 / 28 agree to within 11 ms**.
 Across both platforms: 0 unexpected silent outputs, 0 truncated effects, 0 stray
 sound requests during capture, 0 duplicate outputs, 0 malformed VGM.
 
+### Reproducibility
+
+Checked by cloning this repository into an empty directory, confirming `roms/`
+arrived empty, symlinking in the ROMs and running `make all` from scratch. All
+**209 WAVs came out byte-for-byte identical** (matching SHA-1) to the ones
+produced on the original working tree, and the validation passes ran clean
+independently. MAME's emulation advances in emulated time rather than wall
+clock, so captures do not vary with host load.
+
+Also checked on that clone: with no ROMs present, `make check-roms` fails with
+the specific missing path, and `make audit` skips the ROM comparison and says
+so rather than passing silently.
+
 ## Repository layout
 
 ```
