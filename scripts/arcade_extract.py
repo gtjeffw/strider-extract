@@ -243,6 +243,7 @@ def main():
 
     for dd in (LOG_DIR, OUT_WAV, OUT_VGM, OUT):
         os.makedirs(os.path.join(ROOT, dd), exist_ok=True)
+    A.verify_roms()
     build_state(a.rebuild_state)
 
     only = [int(x, 16) for x in a.codes.split(",")] if a.codes else None

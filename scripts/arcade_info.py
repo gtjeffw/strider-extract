@@ -22,6 +22,15 @@ ROMDIR = os.path.join(ROOT, "roms", MAME_SET)   # MAME needs the set name
 Z80_ROM  = "09.12b"           # 64 KiB sound program
 OKI_ROMS = ["18.11c", "19.12c"]   # concatenated -> 256 KiB `oki` region
 
+# CRC32s from MAME's own `strider` manifest. Other Strider sets (striderua,
+# striderj, striderjr, strideruc) have DIFFERENT sound ROMs, so every address in
+# docs/arcade.md would be wrong for them - hence the check.
+ROM_CRC32 = {
+    "09.12b": 0x2ED403BC,
+    "18.11c": 0x4386BC80,
+    "19.12c": 0x444536D7,
+}
+
 # ---- Z80 memory map (CPS-1 standard, bank mapping verified live) --------
 # $0000-$7FFF  ROM, direct  -> ROM $0000-$7FFF
 # $8000-$BFFF  ROM, banked  -> bank 0 = ROM $8000 (all $FF here), bank 1 = ROM $C000
@@ -179,3 +188,25 @@ def decode_oki_adpcm(data):
             step = 0 if step < 0 else (48 if step > 48 else step)
             out.append(signal)
     return out
+
+
+def verify_roms(strict=True):
+    """Check the sound ROMs against MAME's `strider` CRC32s.
+
+    Returns a list of (filename, expected, got) for mismatches. With strict=True
+    a mismatch raises, because every address in docs/arcade.md is specific to
+    this set.
+    """
+    import zlib
+    bad = []
+    for name, want in ROM_CRC32.items():
+        got = zlib.crc32(load(name)) & 0xFFFFFFFF
+        if got != want:
+            bad.append((name, want, got))
+    if bad and strict:
+        msg = "\n".join(f"  {n}: expected CRC32 {w:08x}, got {g:08x}"
+                         for n, w, g in bad)
+        raise SystemExit(
+            "arcade ROM mismatch - this is not MAME's `strider` set:\n" + msg +
+            "\nOther Strider sets have different sound ROMs; see roms/README.md.")
+    return bad

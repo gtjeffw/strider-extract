@@ -151,6 +151,61 @@ Two findings worth pulling out:
   can never steal a voice from the music. The Mega Drive driver does the
   opposite, explicitly marking and taking over a music track's channel.
 
+## What is generated vs what is baked in
+
+Everything under `output/`, `analysis/` and `build/` is produced from the ROMs
+you supply. Nothing precomputed is shipped. But it is worth being precise about
+what that does and does not mean, because the pipeline is a mix.
+
+**Generated statically** — reads the ROM bytes, no emulation:
+
+| Step | Produces |
+|---|---|
+| `analyze_rom.py`, `arcade_analyze.py` | every pointer table, priority table, sound-test map, phrase table, voice layout, driver command table |
+| `dis68k.py`, `disz80.py` | the disassembly listings |
+| `patch_rom.py` | the patched ROM copies, including the opcode scan that finds the sound-queue writers |
+| `extract_oki.py` | the 28 OKI samples, decoded in Python |
+| `extract_pcm.py` | the 8 DPCM samples, decoded in Python |
+
+**Generated dynamically** — runs the real driver inside MAME:
+
+| Step | Produces |
+|---|---|
+| `extract.py` | 87 Mega Drive captures: WAV, VGM, per-sound FM/PSG/DAC channel usage |
+| `arcade_extract.py` | 123 arcade captures: WAV, VGM, per-sound YM2151/OKI usage |
+| `validate.py` | the sound-test mapping driven through the game's own dispatch code |
+
+One hybrid: `extract_pcm.py` decodes the samples statically but takes their
+*playback rate* from the capture logs, because the Z80's delay-loop timing is
+easier to measure than to derive. It falls back to a cycle model and says so
+loudly if no capture log exists.
+
+**Baked in** — the reverse engineering itself. `scripts/rominfo.py` and
+`scripts/arcade_info.py` hold 45 ROM addresses between them: bank bases, driver
+entry points, RAM maps, the queue and latch addresses, table locations, the Z80
+blob offset, the DAC bank bases. Those are *applied* to your ROM, not
+rediscovered from it. The tooling is not a general-purpose sound-driver
+detector; it is this analysis, made runnable.
+
+What stops that being fragile is that the addresses are checked rather than
+trusted:
+
+* the Mega Drive ROM's SHA-1 is compared and warned about;
+* the arcade sound ROMs are checked against MAME's CRC32s, and a mismatch is a
+  hard error, because the other Strider sets have different sound ROMs;
+* `rominfo.verify_tables()` asserts the invariants that established the counts
+  in the first place — both pointer tables strictly increasing, each abutting
+  the data it points into, the DAC sample tables chaining exactly with the first
+  sample immediately after the table;
+* `patch_rom.py` asserts the injected code fits in genuinely free `$FF` padding,
+  and that no sound-queue writer is still live after patching;
+* the save-state builders refuse to save until they have *observed* silence, and
+  the Mega Drive one until it has observed its relocated main loop actually
+  spinning.
+
+So a ROM the addresses do not fit fails with a specific message rather than
+quietly producing plausible nonsense.
+
 ## Validation
 
 `make validate` (Mega Drive) — all checks pass:

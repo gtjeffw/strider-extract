@@ -17,6 +17,7 @@ OUT = "analysis/arcade/tables"
 def main():
     d = A.z80_rom()
     rom = A.oki_rom()
+    A.verify_roms()
     os.makedirs(os.path.join(ROOT, OUT), exist_ok=True)
     rep = {}
 

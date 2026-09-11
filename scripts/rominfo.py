@@ -201,3 +201,55 @@ SOUNDTEST_PLAY   = 0x003442
 # the service-menu variables ($FFFDE0/E2/E4/E6) and no instruction in the ROM
 # references it (verified by an operand scan); the game is frozen anyway.
 SOUNDTEST_GO     = 0xFFFDE8
+
+
+def verify_tables(d, strict=True):
+    """Structural sanity checks on the pointer tables.
+
+    These are the invariants that confirmed the song and SFX counts in the first
+    place: both tables must be strictly increasing, and each must abut the data
+    it points into. If the baked-in addresses do not fit the ROM you supplied,
+    this fails loudly instead of letting the analysis print nonsense.
+    """
+    problems = []
+
+    songs = song_table(d)
+    sfxs = sfx_table(d)
+    prio = be32(d, BANK_BASE + HDR_PRIO_TBL)
+    sfx_tbl = be32(d, BANK_BASE + HDR_SFX_TBL)
+
+    if songs != sorted(songs) or len(set(songs)) != len(songs):
+        problems.append("song pointer table is not strictly increasing")
+    if sfxs != sorted(sfxs) or len(set(sfxs)) != len(sfxs):
+        problems.append("sfx pointer table is not strictly increasing")
+
+    song_tbl_end = be32(d, BANK_BASE + HDR_SONG_TBL) + 4 * SONG_COUNT
+    if song_tbl_end != prio:
+        problems.append(
+            f"song table ends ${song_tbl_end:06X} but the priority table starts "
+            f"${prio:06X} - SONG_COUNT ({SONG_COUNT}) looks wrong")
+    sfx_tbl_end = sfx_tbl + 4 * SFX_COUNT
+    if sfx_tbl_end != sfxs[0]:
+        problems.append(
+            f"sfx table ends ${sfx_tbl_end:06X} but the first sfx header is at "
+            f"${sfxs[0]:06X} - SFX_COUNT ({SFX_COUNT}) looks wrong")
+    if not (BANK_BASE < songs[0] < sfx_tbl):
+        problems.append("song data does not lie between the bank header and "
+                        "the sfx pointer table")
+
+    # DAC tables must chain exactly, with the first sample right after the table
+    for key, (base, n) in DAC_BANKS.items():
+        ents = [e for e in dac_entries(d) if e["bank"] == key]
+        if ents[0]["z80_start"] != 0x8000 + n * DAC_ENTRY_SIZE:
+            problems.append(f"DAC bank {key}: first sample does not follow the "
+                            f"{n}-entry table")
+        for a, b in zip(ents, ents[1:]):
+            if a["z80_start"] + a["length"] != b["z80_start"]:
+                problems.append(f"DAC bank {key}: samples do not chain at "
+                                f"${a['rom_start']:06X}")
+
+    if problems and strict:
+        raise SystemExit("ROM structure does not match the documented layout:\n"
+                         + "\n".join("  " + p for p in problems)
+                         + "\nIs this the expected revision? See roms/README.md.")
+    return problems

@@ -271,6 +271,7 @@ def main():
         os.makedirs(os.path.join(ROOT, d), exist_ok=True)
 
     rom = R.load(os.path.join(ROOT, R.ROM_NAME))
+    R.verify_tables(rom)
     build_rom(a.rebuild_rom)
     build_state(a.rebuild_state or a.rebuild_rom)
 
