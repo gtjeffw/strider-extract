@@ -23,7 +23,6 @@ import rominfo as R
 
 NOP = b"\x4e\x71"
 RTS = b"\x4e\x75"
-MOVE_A2_INC_D0 = b"\x10\x1a"          # move.b (a2)+,d0
 
 HDR_CHECKSUM = 0x18E
 HDR_ROM_END  = 0x1A4
@@ -150,18 +149,32 @@ def build_mute(data, freeze=False, soundtest=False):
         buf[a:a+2] = RTS
         log.append(f"0x{a:06X}  queue-slot allocator entry -> rts")
 
-    for addr, size, note in R.EXTRA_QUEUE_WRITERS:
-        if soundtest and addr == 0x03446:
+    # Discover the game-side queue writers in THIS rom rather than trusting a
+    # baked-in list, then neutralise each one in place.
+    for addr, size, dst in scan_queue_writers(data):
+        if R.STUB_TABLE <= addr < R.QUEUE_ALLOC + 0x30:
+            continue                      # the stub table, handled above
+        note = R.QUEUE_WRITER_NOTES.get(addr, "(unannotated)")
+        if soundtest and addr == R.SOUNDTEST_DISPATCH:
             log.append(f"0x{addr:06X}  {note} -> LEFT INTACT (soundtest mode)")
             continue
-        assert buf[addr] == 0x11 and buf[addr+1] >= 0xC0, hex(addr)
-        if addr == 0x02544:
-            buf[addr:addr+size] = MOVE_A2_INC_D0 + NOP * ((size - 2) // 2)
-            log.append(f"0x{addr:06X}  {note} -> move.b (a2)+,d0 + nop")
+        src_mode = (buf[addr + 1] >> 3) & 7
+        src_reg = buf[addr + 1] & 7
+        if src_mode == 3:
+            # (An)+ : the caller may depend on the post-increment, so keep it
+            # and throw the byte into d0 instead of removing the instruction.
+            repl = bytes((0x10, 0x18 | src_reg)) + NOP * ((size - 2) // 2)
+            how = f"move.b (a{src_reg})+,d0 + {(size-2)//2}x nop"
+        elif src_mode == 4:
+            repl = bytes((0x10, 0x20 | src_reg)) + NOP * ((size - 2) // 2)
+            how = f"move.b -(a{src_reg}),d0 + {(size-2)//2}x nop"
         else:
-            assert size % 2 == 0
-            buf[addr:addr+size] = NOP * (size // 2)
-            log.append(f"0x{addr:06X}  {note} -> {size//2}x nop")
+            assert size % 2 == 0, (hex(addr), size)
+            repl = NOP * (size // 2)
+            how = f"{size//2}x nop"
+        assert len(repl) == size, (hex(addr), size, len(repl))
+        buf[addr:addr + size] = repl
+        log.append(f"0x{addr:06X}  ${dst:04X}.w  {note} -> {how}")
 
     if freeze or soundtest:
         lo, hi = R.FREEZE_PAD
@@ -178,7 +191,7 @@ def build_mute(data, freeze=False, soundtest=False):
     # sanity: nothing outside the (now-dead) allocator may still target the queue
     allowed = {R.QUEUE_ALLOC, R.QUEUE_ALLOC + 2}
     if soundtest:
-        allowed.add(0x03446)
+        allowed.add(R.SOUNDTEST_DISPATCH)
     live = [f"0x{a:06X}" for a, _, _ in scan_queue_writers(bytes(buf))
             if a not in allowed and not (R.QUEUE_ALLOC <= a <= R.QUEUE_ALLOC + 0x30)]
     assert not live, f"queue writers still live: {live}"

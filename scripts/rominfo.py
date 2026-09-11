@@ -157,18 +157,25 @@ def soundtest_table(d):
     """index -> sound id, exactly as the menu dispatches it."""
     return list(d[SOUNDTEST_TABLE:SOUNDTEST_TABLE + SOUNDTEST_COUNT])
 
-# Every `move.b <ea>,$FF9C0A/0B/0C.w` outside the $020000 stub table, i.e. the
-# places the *game* (not the harness) can enqueue a sound. Found by an
-# exhaustive opcode scan; see scripts/patch_rom.py.
-EXTRA_QUEUE_WRITERS = [
-    (0x02544, 4, "move.b (a2)+,$9C0A.w   - script/cutscene sound trigger"),
-    (0x029BA, 6, "move.b #$D6,$9C0A.w    - plays speech sample $D6"),
-    (0x03446, 6, "move.b $344E(pc,d0.w),$9C0A.w - THE SOUND TEST dispatch"),
-    (0x034D0, 6, "move.b (a1,d0.w),$9C0A.w - stage BGM selector (table $0361E)"),
-    (0x95EEA, 6, "move.b #$9B,$9C0A.w    - ending/staff roll"),
-    (0x95EF2, 6, "move.b #$D7,$9C0A.w    - ending speech sample"),
-    (0x95FC0, 6, "move.b #$D9,$9C0A.w    - ending stop-all"),
-]
+# Human-readable labels for the `move.b <ea>,$FF9C0A/0B/0C.w` sites outside the
+# $020000 stub table, i.e. the places the *game* (not the harness) can enqueue a
+# sound.
+#
+# These are annotations only. scripts/patch_rom.py finds the sites itself by an
+# exhaustive opcode scan of whichever ROM you supply, and patches what it finds;
+# an address missing from this dict just prints as "(unannotated)". So a
+# different revision with different addresses still gets patched correctly.
+QUEUE_WRITER_NOTES = {
+    0x02544: "script/cutscene sound trigger",
+    0x029BA: "plays speech sample $D6",
+    0x03446: "THE SOUND TEST dispatch",
+    0x034D0: "stage BGM selector (table $0361E)",
+    0x95EEA: "ending/staff roll",
+    0x95EF2: "ending speech sample",
+    0x95FC0: "ending stop-all",
+}
+# The one site the soundtest ROM variant must leave intact.
+SOUNDTEST_DISPATCH = 0x03446
 
 
 # ---- freeze patch (scripts/patch_rom.py --mode freeze) ------------------
