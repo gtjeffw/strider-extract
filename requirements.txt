@@ -1,0 +1,4 @@
+# 68000 disassembly (M68K support)
+capstone>=5.0.0
+# Z80 disassembly
+z80dis>=1.0.6

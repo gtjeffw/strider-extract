@@ -1,0 +1,22 @@
+# ---- user-supplied ROMs -------------------------------------------------
+# Nothing copyrighted is distributed: bring your own dumps.
+/roms/*
+!/roms/.gitkeep
+!/roms/README.md
+
+# ---- generated, and all derived from copyrighted ROM data ---------------
+/build/
+/output/
+/analysis/
+
+# ---- MAME working state -------------------------------------------------
+/tools/
+mame.log
+
+# ---- python -------------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+
+# ---- macOS --------------------------------------------------------------
+.DS_Store
