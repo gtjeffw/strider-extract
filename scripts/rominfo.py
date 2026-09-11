@@ -157,6 +157,73 @@ def soundtest_table(d):
     """index -> sound id, exactly as the menu dispatches it."""
     return list(d[SOUNDTEST_TABLE:SOUNDTEST_TABLE + SOUNDTEST_COUNT])
 
+
+# ---- on-screen menu labels ----------------------------------------------
+# The service menu draws each line through $023F8E, which takes a 10-byte
+# display descriptor:
+#
+#   +$00 word  number of runs, minus 1
+#   +$02 long  pointer to the text (NOT two 16-bit fields - getting this wrong
+#              is what made the labels look unrecoverable at first)
+#   +$06 long  VDP control longword: the nametable address to write
+#
+# $023F8E then reads bytes from the text pointer until $FF, adds the caller's
+# tile base (d0, $A000 here) to each and writes it to the VDP data port. So the
+# "text" is a run of tile indices, and the font happens to be laid out in a
+# linear order that decodes trivially.
+MENU_DESCRIPTORS = {          # which variable each descriptor table drives
+    0xFFFDE0: 0x0240AC,      # menu line: LEVEL SELECT / PLAYERS / SOUND SELECT
+    0xFFFDE2: 0x0240CA,      # difficulty: EASY / NORMAL / HARD
+    0xFFFDE4: 0x0240E8,      # lives: 3 / 4 / 5
+    SOUNDTEST_INDEX: 0x024106,   # the 66 sound-test labels
+}
+MENU_DESCRIPTOR_SIZE = 10
+MENU_TEXT_END = 0xFF
+
+# Tile index -> character. Derived by spotting "THE" as $1F $13 $10 in
+# "MOSQUE THE COLD-HEARTED", which fixes $0C = 'A'; the rest follows and leaves
+# no unresolved codes across all 75 menu strings.
+MENU_CHARSET = {0x00: " ", 0x28: "-", 0x2A: ".", 0x2B: "!"}
+MENU_CHARSET.update({0x02 + i: chr(ord("0") + i) for i in range(10)})
+MENU_CHARSET.update({0x0C + i: chr(ord("A") + i) for i in range(26)})
+
+
+def menu_text(d, ptr):
+    """Decode one $FF-terminated run of tile indices to a string."""
+    out = []
+    while d[ptr] != MENU_TEXT_END:
+        out.append(MENU_CHARSET.get(d[ptr], f"<{d[ptr]:02X}>"))
+        ptr += 1
+    return "".join(out)
+
+
+def menu_labels(d, table, count):
+    """Decode `count` display descriptors starting at `table`."""
+    return [menu_text(d, be32(d, table + MENU_DESCRIPTOR_SIZE * i + 2))
+            for i in range(count)]
+
+
+def soundtest_labels(d):
+    """The 66 labels the sound test shows, in menu-index order.
+
+    Indices 0-30 are the real music titles; 31-65 are the game's own effect
+    numbering, S.E.00 to S.E.34.
+    """
+    return menu_labels(d, MENU_DESCRIPTORS[SOUNDTEST_INDEX], SOUNDTEST_COUNT)
+
+
+def label_slug(text):
+    """Filename-safe form of a menu label: DEFENSE LINE -> DEFENSE_LINE,
+    S.E.07 -> SE07."""
+    out = []
+    for c in text:
+        if c.isalnum():
+            out.append(c)
+        elif c in " -":
+            out.append("_")
+        # '.' and '!' are dropped
+    return "_".join(filter(None, "".join(out).split("_")))
+
 # Human-readable labels for the `move.b <ea>,$FF9C0A/0B/0C.w` sites outside the
 # $020000 stub table, i.e. the places the *game* (not the harness) can enqueue a
 # sound.

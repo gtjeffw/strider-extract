@@ -478,15 +478,101 @@ entries resolve to exactly the statically-read table, and the resulting
 chip-write sequences are identical to the ones the extraction harness produces
 by poking `$FF9C0A`. See `output/megadrive/validation.json`.
 
-### 10.3 Menu labels **[H]**
+### 10.3 Menu labels **[C]**
 
-The 10-byte descriptors at `$024106` point into VDP tile/nametable data, not
-ASCII — the third field walks `$45AE, $45BB, $45C1, …` with a constant fourth
-field `$6696`, and those are not ROM text addresses. No ASCII sound names exist
-in the ROM. The menu's on-screen labels were therefore not recovered, and the
-outputs are named by id.
+The labels *are* recoverable, and they name every entry.
 
----
+The menu draws each line through `$023F8E`, which takes a 10-byte display
+descriptor:
+
+| Offset | Size | Meaning |
+|---|---|---|
+| `+$00` | word | number of runs, minus 1 |
+| `+$02` | **long** | pointer to the text |
+| `+$06` | long | VDP control longword — the nametable address to write |
+
+```
+023F8E: movem.l d0-d2/a0-a2,-(a7)
+023F92: lea     $C00000.l,a2       ; VDP data port
+023F98: move.w  (a0)+,d2           ; run count - 1
+023F9A: movea.l (a0)+,a1           ; text pointer
+023F9C: move.l  (a0)+,$C00004.l    ; VDP control: where to write
+023FA2: moveq   #$0,d1
+023FA4: move.b  (a1)+,d1
+023FA6: cmpi.b  #$ff,d1
+023FAA: beq.b   $23fb2             ; $FF terminates
+023FAC: add.w   d0,d1              ; + tile base (d0 = $A000 from the caller)
+023FAE: move.w  d1,(a2)
+023FB0: bra.b   $23fa2
+023FB2: dbra    d2,$23f9a
+```
+
+So the "text" is a run of tile indices terminated by `$FF`, and the font is laid
+out linearly enough to decode directly. Spotting `THE` as `$1F $13 $10` in one
+of the longer strings fixes `$0C` = `A`; everything else follows:
+
+| Tile index | Character |
+|---|---|
+| `$00` | space |
+| `$02`–`$0B` | `0`–`9` |
+| `$0C`–`$25` | `A`–`Z` |
+| `$28` | `-` |
+| `$2A` | `.` |
+| `$2B` | `!` |
+| `$FF` | terminator |
+
+That charset decodes all 75 strings across the four menu descriptor tables with
+**no unresolved codes**, which is itself the evidence that it is right.
+
+Descriptor tables:
+
+| Table | Drives | Entries | Decoded |
+|---|---|---|---|
+| `$0240AC` | `$FFFDE0` | 3 | `LEVEL SELECT`, `PLAYERS`, **`SOUND SELECT`** |
+| `$0240CA` | `$FFFDE2` | 3 | `EASY`, `NORMAL`, `HARD` |
+| `$0240E8` | `$FFFDE4` | 3 | `3`, `4`, `5` |
+| `$024106` | `$FFFDE6` | 66 | the sound-test labels |
+
+`SOUND SELECT` on line 0 independently confirms the menu identification in
+§10.
+
+Sound-test labels, indices 0–30 — the **real music titles**:
+
+| idx | id | Title | idx | id | Title |
+|---|---|---|---|---|---|
+| 0 | `$81` | DEFENSE LINE | 16 | `$8E` | VALLEYS AND RIVERS |
+| 1 | `$82` | RAID! | 17 | `$8F` | ROARING |
+| 2 | `$83` | MOSQUE THE COLD-HEARTED | 18 | `$90` | AFRICAN FORMIDABLE |
+| 3 | `$84` | BEASTS | 19 | `$91` | HIRYU |
+| 4 | `$85` | COUP | 20 | `$9A` | THEME FOR COUNTERATTACK |
+| 5 | `$86` | UROBOROS-THE IRON RULER | 21 | `$9C` | GRANDMASTER |
+| 6 | `$87` | SIBERIAN TUNNEL | 22 | `$98` | INTRODUCTION 1 |
+| 7 | `$88` | DRIVING WHEEL | 23 | `$9D` | INTRODUCTION 2 |
+| 8 | `$89` | BIG RUN | 24 | `$99` | INTRODUCTION 3 |
+| 9 | `$8A` | MASS OF CLOUD | 25 | `$9E` | INTRODUCTION 4 |
+| 10 | `$8B` | FU-JIN | 26 | `$93` | STAGE CLEAR |
+| 11 | `$95` | SHORT SPIN | 27 | `$9F` | STAGE FINISH |
+| 12 | `$96` | GRAVITY UNUSUAL | 28 | `$9B` | ENDING |
+| 13 | `$97` | CAPTURE! | 29 | `$92` | GAME OVER |
+| 14 | `$8C` | WAR DRUM | 30 | `$94` | CONTINUE |
+| 15 | `$8D` | ENCIRCLEMENT | | | |
+
+Indices 31–65 are the game's own effect numbering, **`S.E.00`–`S.E.34`**, with
+no descriptive names — 35 labels, matching exactly the 29 sequence SFX plus 6
+DAC samples the menu reaches (§10.1). The numbering is canonical, so an effect
+can be referred to the way the game refers to it.
+
+Both are used for the output filenames: `MUS_01_81_DEFENSE_LINE.wav`,
+`SFX_001_A0_SE00.wav`. The 19 SFX and 2 DAC samples the menu cannot reach have
+no label and keep the bare form, `SFX_002_A1.wav`.
+
+Correction worth recording: an earlier version of these notes stated the labels
+were *not* recoverable, claiming the descriptors held two 16-bit fields whose
+values were not ROM text addresses. That was wrong — `+$02` is a single
+**32-bit** pointer, and dropping its high word is what made `$000245AE` look
+like `$45AE`, which lands in unrelated code. The variable-length gaps between
+consecutive pointers (5–24 bytes, 635 total for 66 entries) were the clue that
+should have prompted a second look sooner.
 
 ## 11. Z80 DPCM / DAC player **[C]**
 

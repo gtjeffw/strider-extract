@@ -111,16 +111,20 @@ def capture(sid, kind, workdir):
     return log, wav, r.stdout
 
 
-def process_one(sid, kind, idx, soundtest_index, rom, workdir):
+def process_one(sid, kind, idx, soundtest_index, label, rom, workdir):
     log, wav_raw, out = capture(sid, kind, workdir)
     meta, events = V.parse_log(log)
     writes = V.to_chip_writes(events)
     an = V.analyse(writes)
 
+    # The game's own on-screen label, when the sound test exposes this id:
+    # real titles for the music, S.E.NN for the effects. Ids the menu cannot
+    # reach have no label and keep the bare name.
+    suffix = ("_" + R.label_slug(label)) if label else ""
     if kind == "music":
-        fname = f"MUS_{idx:02d}_{sid:02X}"
+        fname = f"MUS_{idx:02d}_{sid:02X}{suffix}"
     else:
-        fname = f"SFX_{idx:03d}_{sid:02X}"
+        fname = f"SFX_{idx:03d}_{sid:02X}{suffix}"
 
     total = (events[-1][0] + W.TAIL_MARGIN_S) if events else 0.0
     vgm_bytes = V.build_vgm(writes, total_seconds=total)
@@ -145,6 +149,7 @@ def process_one(sid, kind, idx, soundtest_index, rom, workdir):
     dac_used = an["dac_writes"] > 0
     row = dict(
         soundtest_index="" if soundtest_index is None else soundtest_index,
+        soundtest_label=label or "",
         sound_id=f"${sid:02X}",
         sound_id_dec=sid,
         classification="music" if kind == "music" else "SFX",
@@ -180,23 +185,25 @@ def process_one(sid, kind, idx, soundtest_index, rom, workdir):
 def plan(rom, only=None):
     """Build the ordered work list: (sid, kind, index, soundtest_index)."""
     st = R.soundtest_table(rom)
+    labels = R.soundtest_labels(rom)
     st_index = {}
     for i, sid in enumerate(st):
         st_index.setdefault(sid, i)
 
+    def ent(sid, kind, n):
+        j = st_index.get(sid)
+        return (sid, kind, n, j, labels[j] if j is not None else None)
+
     items = []
     for i in range(R.SONG_COUNT):
-        sid = R.SONG_ID_FIRST + i
-        items.append((sid, "music", i + 1, st_index.get(sid)))
+        items.append(ent(R.SONG_ID_FIRST + i, "music", i + 1))
     n = 0
     for i in range(R.SFX_COUNT):
-        sid = R.SFX_ID_FIRST + i
         n += 1
-        items.append((sid, "sfx", n, st_index.get(sid)))
+        items.append(ent(R.SFX_ID_FIRST + i, "sfx", n))
     for i in range(R.DAC_COUNT):
-        sid = R.DAC_ID_FIRST + i
         n += 1
-        items.append((sid, "dac", n, st_index.get(sid)))
+        items.append(ent(R.DAC_ID_FIRST + i, "dac", n))
     if only:
         want = set(only)
         items = [it for it in items if it[0] in want]
@@ -249,7 +256,8 @@ def validate(rows):
     return problems
 
 
-FIELDS = ["soundtest_index", "sound_id", "sound_id_dec", "classification",
+FIELDS = ["soundtest_index", "soundtest_label", "sound_id", "sound_id_dec",
+          "classification",
           "synthesis", "wav", "vgm", "duration_s", "sample_rate", "channels",
           "silent", "peak", "rms", "truncated", "hit_window", "capture_reason",
           "capture_frames", "fm_channels_used", "fm_channels_touched",
@@ -285,10 +293,10 @@ def main():
     rows, errors = [], []
     with tempfile.TemporaryDirectory() as td:
         def job(it):
-            sid, kind, idx, sti = it
+            sid, kind, idx, sti, label = it
             wd = os.path.join(td, f"w{sid:02X}")
             os.makedirs(wd, exist_ok=True)
-            return process_one(sid, kind, idx, sti, rom, wd)
+            return process_one(sid, kind, idx, sti, label, rom, wd)
 
         with cf.ThreadPoolExecutor(max_workers=a.jobs) as ex:
             futs = {ex.submit(job, it): it for it in items}
@@ -300,6 +308,7 @@ def main():
                     row, out = fut.result()
                     rows.append(row)
                     print(f"  [{done:3d}/{len(items)}] ${sid:02X} {kind:5s} "
+                          f"{(row['soundtest_label'] or '-'):23s} "
                           f"{row['duration_s']:7.3f}s peak={row['peak']:5d} "
                           f"fm={row['fm_channels_used'] or '-':11s} "
                           f"psg={row['psg_channels_used'] or '-':6s} "
@@ -324,8 +333,11 @@ def main():
                            table=f"${R.SOUNDTEST_TABLE:06X}",
                            entries=R.SOUNDTEST_COUNT,
                            index_var=f"${R.SOUNDTEST_INDEX:06X}",
-                           map=[{"index": i, "sound_id": f"${s:02X}"}
-                                for i, s in enumerate(R.soundtest_table(rom))]),
+                           map=[{"index": i, "sound_id": f"${s:02X}",
+                                 "label": l}
+                                for i, (s, l) in enumerate(
+                                    zip(R.soundtest_table(rom),
+                                        R.soundtest_labels(rom)))]),
             sounds=rows), f, indent=2)
 
     print(f"\nwrote output/megadrive/sounds.csv and sounds.json ({len(rows)} sounds)")

@@ -183,8 +183,21 @@ def main():
                    for k, v in e.items()} for e in drows]
     w("dac.json", rep["dac"])
 
-    print("\n=== sound test (menu index -> sound id) ===")
+    print("\n=== service menu labels (decoded from the tile-index text) ===")
+    for var, tbl in R.MENU_DESCRIPTORS.items():
+        if var == R.SOUNDTEST_INDEX:
+            continue
+        print(f"  ${var:06X} @ ${tbl:06X}: "
+              + " / ".join(R.menu_labels(d, tbl, 3)))
+
+    print("\n=== sound test (menu index -> sound id -> label) ===")
     t = R.soundtest_table(d)
+    labels = R.soundtest_labels(d)
+    for i in range(0, len(t), 2):
+        row = "  " + "   ".join(
+            f"{j:2d}:${t[j]:02X} {labels[j]:<24s}"
+            for j in range(i, min(i + 2, len(t))))
+        print(row.rstrip())
     for i in range(0, len(t), 11):
         print("  " + "  ".join(f"{j:2d}:${t[j]:02X}"
                                for j in range(i, min(i + 11, len(t)))))
@@ -200,7 +213,7 @@ def main():
           + " ".join(f"${x:02X}" for x in missing_dac))
     rep["soundtest"] = dict(
         entries=len(t), counts=counts,
-        map=[{"index": i, "sound_id": f"${x:02X}",
+        map=[{"index": i, "sound_id": f"${x:02X}", "label": labels[i],
               "class": ("music" if x < 0xA0 else "sfx" if x < 0xD0 else "dac")}
              for i, x in enumerate(t)],
         unreachable_sfx=[f"${x:02X}" for x in missing_sfx],

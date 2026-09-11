@@ -90,13 +90,16 @@ roms/
 ```
 output/
   megadrive/
-    sounds.csv              87 rows, 28 columns
+    sounds.csv              87 rows, 29 columns (incl. the sound-test label)
     sounds.json             same, plus the sound-test map and render method
     validation.json         patch audit + per-index validation results
     wav/                    48 kHz / 16-bit / stereo
-      MUS_01_81.wav  … MUS_31_9F.wav      31 music tracks
-      SFX_001_A0.wav … SFX_048_CF.wav     48 FM sound effects
-      SFX_049_D0.wav … SFX_056_D7.wav      8 DPCM samples
+      MUS_01_81_DEFENSE_LINE.wav …       31 music tracks, titled from the
+      MUS_31_9F_STAGE_FINISH.wav          game's own sound-test labels
+      SFX_001_A0_SE00.wav …              48 FM sound effects, numbered as the
+      SFX_048_CF.wav                      game numbers them (S.E.00-S.E.34);
+      SFX_049_D0.wav …                     8 DPCM samples; the 21 ids the menu
+      SFX_056_D7.wav                       cannot reach have no label
     vgm/                    87 VGM 1.50 logs (YM2612 + SN76489)
     raw-pcm/                the 8 DPCM samples: .dpcm, _u8.raw, .wav
   arcade/
@@ -297,9 +300,6 @@ Everything except `README.md`, `Makefile`, `mame.ini`, `requirements.txt`,
   accumulated waits vs the total-samples field) but have **not** been played
   back — no VGM player was installed. The arcade ones in particular use
   YM2151 + OKIM6295 with an attached ROM data block, a less common combination.
-* The Mega Drive sound test's on-screen labels were not recovered: they are VDP
-  tile descriptors, not ASCII, and the ROM contains no sound-name strings.
-  Outputs are named by id.
 * The arcade music / FM-effect split is inferred from YM2151 channel allocation.
   The separation is perfect, but it is an inference from behaviour rather than a
   label in the ROM.
@@ -355,6 +355,15 @@ currently reports **no run of 8+ bytes**, and 18 short coincidental matches,
 each of which is visibly a register number, an immediate or an opcode encoding
 rather than copied data. It also counts the quoted disassembly lines, so that
 number cannot drift unnoticed.
+
+One category the audit deliberately does not cover, because it scans for binary
+data rather than text: the **31 music titles** are reproduced in
+[docs/megadrive.md](docs/megadrive.md) and in the output filenames, decoded from
+the sound test's tile-index labels. That is a considered choice rather than an
+oversight. A track listing is factual information of the sort every soundtrack
+release, database and wiki carries, and it is what makes the extracted music
+identifiable at all; it is a different thing from reproducing code or sample
+data. The 35 effect labels are just the game's own numbering, `S.E.00`–`S.E.34`.
 
 I am not a lawyer and none of this is legal advice. It is a description of what
 is in the repository so you can make your own call.
